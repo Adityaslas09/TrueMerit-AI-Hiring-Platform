@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
-import Login from './pages/Login';
+import StudentLogin from './pages/StudentLogin';
+import RecruiterLogin from './pages/RecruiterLogin';
 import Register from './pages/Register';
 import StudentDashboard from './pages/StudentDashboard';
 import RecruiterDashboard from './pages/RecruiterDashboard';
@@ -14,8 +15,10 @@ function App() {
         <div className="min-h-screen bg-background text-textLight flex flex-col">
           <Navbar />
           <Routes>
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<Navigate to="/login/student" replace />} />
+            <Route path="/login" element={<Navigate to="/login/student" replace />} />
+            <Route path="/login/student" element={<StudentLogin />} />
+            <Route path="/login/recruiter" element={<RecruiterLogin />} />
             <Route path="/register" element={<Register />} />
             
             <Route 

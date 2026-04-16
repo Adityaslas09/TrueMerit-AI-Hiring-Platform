@@ -7,36 +7,42 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchUserProfile = async (token) => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/auth/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUser(res.data);
+      return res.data;
+    } catch (error) {
+      localStorage.removeItem('token');
+      return null;
+    }
+  };
+
   useEffect(() => {
-    const fetchUser = async () => {
+    const initAuth = async () => {
       const token = localStorage.getItem('token');
       if (token) {
-        try {
-          const res = await axios.get('http://localhost:5000/api/auth/profile', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setUser(res.data);
-        } catch (error) {
-          localStorage.removeItem('token');
-        }
+        await fetchUserProfile(token);
       }
       setLoading(false);
     };
-    fetchUser();
+    initAuth();
   }, []);
 
-  const login = async (email, password) => {
-    const res = await axios.post('http://localhost:5000/api/auth/login', { email, password });
+  const login = async (email, password, role) => {
+    const res = await axios.post('http://localhost:5000/api/auth/login', { email, password, role });
     localStorage.setItem('token', res.data.token);
-    setUser(res.data);
-    return res.data;
+    const fullUser = await fetchUserProfile(res.data.token);
+    return fullUser || res.data;
   };
 
-  const register = async (name, email, password, role) => {
-    const res = await axios.post('http://localhost:5000/api/auth/register', { name, email, password, role });
+  const register = async (name, email, password, role, githubUsername) => {
+    const res = await axios.post('http://localhost:5000/api/auth/register', { name, email, password, role, githubUsername });
     localStorage.setItem('token', res.data.token);
-    setUser(res.data);
-    return res.data;
+    const fullUser = await fetchUserProfile(res.data.token);
+    return fullUser || res.data;
   };
 
   const logout = () => {

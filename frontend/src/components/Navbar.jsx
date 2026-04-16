@@ -13,8 +13,9 @@ const Navbar = () => {
 
   return (
     <nav className="bg-surface border-b border-gray-800 px-6 py-4 flex justify-between items-center sticky top-0 z-50 shadow-sm">
-      <Link to="/" className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400">
-        TrueMerit
+      <Link to="/" className="flex items-center gap-3">
+        <img src="/logo.png" alt="TrueMerit Logo" className="h-10 w-10 object-contain rounded-xl" />
+        <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400">TrueMerit</span>
       </Link>
       <div>
         {user ? (

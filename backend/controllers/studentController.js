@@ -1,8 +1,8 @@
 const User = require('../models/User');
 const Project = require('../models/Project');
 const { fetchGithubData } = require('../services/githubService');
-const { calculateScore } = require('../services/scoringEngine');
-const { evaluateProject } = require('../services/aiService');
+const { calculateTrueMeritScore, evaluateProjectExpert } = require('../services/aiService');
+const { invalidateCacheByPrefix } = require('../services/cacheService');
 
 // @desc    Update student profile & sync github
 // @route   PUT /api/students/profile
@@ -16,6 +16,10 @@ const updateProfile = async (req, res) => {
       user.college = req.body.college || user.college;
       user.cgpa = req.body.cgpa || user.cgpa;
       user.skills = req.body.skills || user.skills;
+      user.resumeText = req.body.resumeText || user.resumeText;
+      if (req.body.certifications) {
+         user.certifications = req.body.certifications;
+      }
       
       if (req.body.githubUsername && req.body.githubUsername !== user.githubUsername) {
         user.githubUsername = req.body.githubUsername;
@@ -26,11 +30,33 @@ const updateProfile = async (req, res) => {
         }
       }
 
-      // Recalculate score after profile update
+      // Recalculate score after profile update using Data Scientist Agent
       const projects = await Project.find({ student: user._id });
-      user.trueMeritScore = calculateScore(user, projects);
+      
+      const metrics = {
+        githubData: user.githubData,
+        projectScores: projects.map(p => p.aiComplexityScore),
+        cgpa: user.cgpa,
+        certifications: user.certifications
+      };
+      
+      const aiScoreResult = await calculateTrueMeritScore(metrics);
+      if (aiScoreResult) {
+         user.trueMeritScore = {
+            total: aiScoreResult.final_score || 0,
+            githubScore: aiScoreResult.breakdown?.github || 0,
+            projectScore: aiScoreResult.breakdown?.projects || 0,
+            academicScore: aiScoreResult.breakdown?.academics || 0,
+            certScore: aiScoreResult.breakdown?.certifications || 0,
+            insight: aiScoreResult.insight || 'Updated via Profile metrics.'
+         };
+      }
 
       const updatedUser = await user.save();
+      
+      // Invalidate recruiter searches
+      invalidateCacheByPrefix('students:');
+      
       res.json(updatedUser);
     } else {
       res.status(404).json({ message: 'Student not found' });
@@ -47,8 +73,12 @@ const addProject = async (req, res) => {
   try {
     const { title, description, githubLink, liveLink, techStack } = req.body;
 
-    // Real AI evaluation using Gemini
-    const aiEval = await evaluateProject(description, techStack || []);
+    // Real AI evaluation using Gemini (Expert Software Engineer Agent)
+    const projectData = {
+       title, description, techStack,
+       readme: 'No extended README scraped', stars: 0, forks: 0, commits: 10
+    };
+    const aiEval = await evaluateProjectExpert(projectData);
 
     const project = new Project({
       student: req.user._id,
@@ -57,17 +87,37 @@ const addProject = async (req, res) => {
       githubLink,
       liveLink,
       techStack,
-      aiComplexityScore: aiEval.aiComplexityScore,
-      aiFeedback: aiEval.aiFeedback
+      aiComplexityScore: aiEval.complexity_score || 5,
+      aiFeedback: aiEval.summary || 'Expert analysis complete.'
     });
 
     const createdProject = await project.save();
 
-    // Recalculate User Score
+    // Recalculate User Score globally utilizing Agent 3
     const user = await User.findById(req.user._id);
     const projects = await Project.find({ student: user._id });
-    user.trueMeritScore = calculateScore(user, projects);
+    
+    const metrics = {
+       githubData: user.githubData,
+       projectScores: projects.map(p => p.aiComplexityScore),
+       cgpa: user.cgpa,
+       certifications: user.certifications
+    };
+    const aiScoreResult = await calculateTrueMeritScore(metrics);
+    if (aiScoreResult) {
+       user.trueMeritScore = {
+          total: aiScoreResult.final_score || 0,
+          githubScore: aiScoreResult.breakdown?.github || 0,
+          projectScore: aiScoreResult.breakdown?.projects || 0,
+          academicScore: aiScoreResult.breakdown?.academics || 0,
+          certScore: aiScoreResult.breakdown?.certifications || 0,
+          insight: aiScoreResult.insight || 'Recomputed following new project.'
+       };
+    }
     await user.save();
+
+    // Invalidate recruiter searches
+    invalidateCacheByPrefix('students:');
 
     res.status(201).json(createdProject);
   } catch (error) {
@@ -87,4 +137,72 @@ const getProjects = async (req, res) => {
   }
 };
 
-module.exports = { updateProfile, addProject, getProjects };
+// @desc    Upload & parse LinkedIn PDF
+// @route   POST /api/students/upload-linkedin
+// @access  Private (Student)
+const uploadLinkedinPdf = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+    const pdfParse = require('pdf-parse');
+    const data = await pdfParse(req.file.buffer);
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.linkedinText = data.text;
+    await user.save();
+    res.json({ message: 'LinkedIn parsed successfully', success: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Upload & verify a certificate image via AI
+// @route   POST /api/students/upload-certificate
+// @access  Private (Student)
+const uploadCertificate = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+    const { verifyCertificate } = require('../services/aiService');
+    const { certName, issuerName } = req.body;
+
+    // Convert buffer to base64
+    const imageBase64 = req.file.buffer.toString('base64');
+    const imageType = req.file.mimetype;
+
+    // Run AI Certificate Forensics Agent
+    const verificationResult = await verifyCertificate(imageBase64, imageType, certName, issuerName);
+
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Add or update the certification entry
+    const certEntry = {
+      name: certName || 'Untitled Certificate',
+      issuer: issuerName || 'Unknown Issuer',
+      date: new Date(),
+      imageBase64,
+      imageType,
+      verificationStatus: verificationResult.verdict || 'pending',
+      verificationScore: verificationResult.confidence_score || 0,
+      verificationDetails: verificationResult.summary || ''
+    };
+
+    user.certifications = user.certifications || [];
+    user.certifications.push(certEntry);
+    await user.save();
+
+    invalidateCacheByPrefix('students:');
+
+    res.json({
+      message: 'Certificate uploaded and verified by AI.',
+      verification: verificationResult,
+      certification: certEntry
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { updateProfile, addProject, getProjects, uploadLinkedinPdf, uploadCertificate };

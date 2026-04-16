@@ -17,8 +17,23 @@ const userSchema = new mongoose.Schema({
   certifications: [{
     name: String,
     issuer: String,
-    date: Date
+    date: Date,
+    imageBase64: String,      // Base64 encoded certificate image
+    imageType: String,         // MIME type (image/jpeg, image/png, application/pdf)
+    verificationStatus: {      // AI verification result
+      type: String,
+      enum: ['pending', 'verified', 'suspicious', 'fake'],
+      default: 'pending'
+    },
+    verificationScore: { type: Number, default: 0 },
+    verificationDetails: { type: String, default: '' },
   }],
+  resumeText: {
+    type: String,
+  },
+  linkedinText: {
+    type: String,
+  },
   githubUsername: { type: String },
   githubData: {
     publicRepos: Number,
@@ -28,27 +43,31 @@ const userSchema = new mongoose.Schema({
     topLanguages: Object,
   },
   
-  // TrueMerit Score
+  // TrueMerit Score (Data Scientist AI Evaluation)
   trueMeritScore: {
     total: { type: Number, default: 0 },
     githubScore: { type: Number, default: 0 },
     projectScore: { type: Number, default: 0 },
     academicScore: { type: Number, default: 0 },
-    certScore: { type: Number, default: 0 }
+    certScore: { type: Number, default: 0 },
+    insight: { type: String, default: 'Pending AI Analysis' }
   }
 }, { timestamps: true });
 
-// Password hashing
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
+// Password hashing (Mongoose 9 async middleware — no next() parameter)
+userSchema.pre('save', async function () {
+  if (!this.isModified('password')) return;
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
-  next();
 });
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
+
+// Phase 3 Scalability Indexes
+userSchema.index({ role: 1, 'trueMeritScore.total': -1 });
+userSchema.index({ skills: 1 });
 
 const User = mongoose.model('User', userSchema);
 module.exports = User;

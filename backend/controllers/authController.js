@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const { fetchGithubData } = require('../services/githubService');
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -12,7 +13,7 @@ const generateToken = (id) => {
 // @access  Public
 const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, githubUsername } = req.body;
 
     const userExists = await User.findOne({ email });
 
@@ -25,7 +26,20 @@ const registerUser = async (req, res) => {
       email,
       password,
       role,
+      githubUsername: role === 'student' ? githubUsername : undefined
     });
+
+    if (user && role === 'student' && githubUsername) {
+      // Async fetch to prevent blocking registration response
+      fetchGithubData(githubUsername).then(async (ghData) => {
+        if (ghData) {
+          user.githubData = ghData;
+          await user.save();
+          const { invalidateCacheByPrefix } = require('../services/cacheService');
+          invalidateCacheByPrefix('students:');
+        }
+      }).catch(console.error);
+    }
 
     if (user) {
       res.status(201).json({
@@ -48,9 +62,13 @@ const registerUser = async (req, res) => {
 // @access  Public
 const authUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
     const user = await User.findOne({ email });
+
+    if (user && user.role !== role) {
+      return res.status(401).json({ message: `Access denied: You are registered as a ${user.role}, not a ${role}.` });
+    }
 
     if (user && (await user.matchPassword(password))) {
       res.json({

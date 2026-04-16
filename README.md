@@ -64,9 +64,11 @@ TrueMerit is a disruptive full-stack platform designed to revolutionize recruitm
    npm run dev
    ```
 
+## 👥 Meet the Team
+
+- **Aditya Bansal** - Backend & AI Systems Lead ([GitHub](https://github.com/Adityaslas09))
+- **Shreya Chauhan** - Frontend & UI/UX Specialist
+- **Aayush Prabhakar** - Integration & AI Features Engineer
+
 ## 📜 License
 This project is for educational and portfolio purposes.
-
----
-*Created by [Your Name]*  
-*Connect with me on [LinkedIn](https://linkedin.com) | [GitHub](https://github.com)*
